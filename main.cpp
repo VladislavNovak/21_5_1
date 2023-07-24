@@ -4,7 +4,6 @@
 #include <sstream>
 #include <fstream>
 #include <cstdlib>
-#include <ctime>
 #include <algorithm>
 #include <string>
 
@@ -219,33 +218,87 @@ void savePersonToBinaryFile(const char* path, character const &person, bool isAp
     file.close();
 }
 
+void printPersons(vector<character> const &persons) {
+    for (auto const &result : persons) {
+        std::cout << result.firstName << std::endl;
+        std::cout << result.secondName << std::endl;
+        std::cout << result.payDay << std::endl;
+        std::cout << result.salary << std::endl;
+        std::cout << std::endl;
+    }
+
+    system("pause");
+    system("cls");
+}
+
+int getSelectedMenuItem() {
+    const char* menu[] = {
+            "exit   :чтобы выйти из программы",
+            "add    :чтобы добавить новую запись",
+            "list   :чтобы вывести ранее созданный список"
+    };
+
+    while (true) {
+        std::cout << "------------МЕНЮ------------" << std::endl;
+        // находим длину массива с указателями на массивы char
+        auto sizeOfMenu = std::end(menu) - std::begin(menu);
+
+        for (int i = 0; i < sizeOfMenu; ++i) {
+            std::cout << menu[i] << std::endl;
+        }
+
+        std::string result = getUserWord("Для дальнейшей работы введите одну из команд");
+
+        for (int i = 0; i < sizeOfMenu; ++i) {
+            // получаем из меню одно из ключевых слов (exit, add, list)
+            auto firstKeyword = splitStringIntoList(menu[i], ' ')[0];
+            if (result == firstKeyword) {
+                system("cls");
+                return i;
+            }
+        }
+
+        std::cout << "Введена неверная команда. Попробуйте снова!" << std::endl;
+        system("pause");
+        system("cls");
+    }
+}
+
 int main() {
     SetConsoleCP(65001);
     SetConsoleOutputCP(65001);
 
     const char* path = R"(..\test.bin)";
 
-    vector<character> persons;
-    vector<character> results;
+    while (true) {
+        string info;
+        auto selectedMenuItem = getSelectedMenuItem();
 
-    persons.push_back(addNewPerson());
-    persons.push_back(addNewPerson());
+        if (selectedMenuItem == 0) {
+            cout << "Программа закончила работу. До новых встреч" << endl;
+            break;
+        }
+        else if (selectedMenuItem == 1) {
+            savePersonToBinaryFile(path, addNewPerson(), true);
+            info = "Добавлена новая запись.\nДля того, чтобы увидеть все записи в базе данных: введите команду list";
+        }
+        else if (selectedMenuItem == 2) {
+            vector<character> results;
+            auto isSuccess = loadIntoArrFromBinaryFile(path, results);
 
-    savePersonToBinaryFile(path, persons[0]);
-    savePersonToBinaryFile(path, persons[1], true);
-
-    auto isSuccess = loadIntoArrFromBinaryFile(path, results);
-
-    if (isSuccess) {
-        for (auto const &result : results) {
-            std::cout << result.firstName << std::endl;
-            std::cout << result.secondName << std::endl;
-            std::cout << result.payDay << std::endl;
-            std::cout << result.salary << std::endl;
-            std::cout << "-----------" << std::endl;
+            if (isSuccess) {
+                cout << "Полный список сохраненных записей:" << endl;
+                printPersons(results);
+            }
+            else {
+                info = "Ошибка чтения. Возможно, файл отсутствует.\nПопробуйте ввести новую запись, набрав команду add";
+            }
         }
 
-    } else {
-        cout << "Error" << endl;
+        if (!info.empty()) {
+            cout << info << endl;
+            system("pause");
+            system("cls");
+        }
     }
 }
