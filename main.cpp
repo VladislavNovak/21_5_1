@@ -1,7 +1,12 @@
+#include <windows.h>
 #include <iostream>
 #include <vector>
+#include <sstream>
 #include <fstream>
 #include <cstdlib>
+#include <ctime>
+#include <algorithm>
+#include <string>
 
 using std::cout;
 using std::endl;
@@ -9,9 +14,143 @@ using std::string;
 using std::vector;
 
 struct character {
-    string name = "unknown";
+    string firstName = "unknown";
+    string secondName = "unknown";
+    string payDay = "unknown";
     int salary = 0;
 };
+
+bool isNumeric(std::string const &str) {
+    auto it = std::find_if(str.begin(), str.end(), [](const char &c) { return !std::isdigit(c); });
+
+    return (!str.empty() && it == str.end());
+}
+
+bool isContainsOnlyLetters(std::string const &str) {
+    auto it = std::find_if(str.begin(), str.end(), [](const char &c) { return !std::isalpha(c); });
+
+    return it == str.end();
+}
+
+std::string getTrimmedString(std::string str, std::string const &whiteSpaces = " \r\n\t\v\f") {
+    auto start = str.find_first_not_of(whiteSpaces);
+    str.erase(0, start);
+    auto end = str.find_last_not_of(whiteSpaces);
+    str.erase(end + 1);
+
+    return str;
+}
+
+std::string getUserLineString(const std::string &msg) {
+    while (true) {
+        std::string userLineString;
+        printf("%s: ", msg.c_str());
+        std::getline(std::cin, userLineString);
+
+        userLineString = getTrimmedString(userLineString);
+        if (userLineString.empty()) {
+            std::cout << "Строка не может быть пустой. Попробуйте снова!" << std::endl;
+            continue;
+        }
+
+        return userLineString;
+    }
+}
+
+std::vector<std::string> splitStringIntoList(std::string const &source, const char delim = ',', bool isEmptyRemove = true) {
+    std::vector<std::string> list;
+    std::stringstream ss(source);
+    std::string rawString;
+
+    while(std::getline(ss, rawString, delim)) {
+        std::string record = getTrimmedString(rawString);
+
+        if (record.empty() && isEmptyRemove) continue;
+
+        list.push_back(record);
+    }
+
+    return list;
+}
+
+bool isStringADate(std::string const &str, std::string &cause) {
+    bool isValid = true;
+    std::vector<std::vector<int>> ranges = { { 1, 31 }, { 1, 12 }, { 1920, 2030 } };
+    std::vector<std::string> parts = splitStringIntoList(str, '.');
+
+    if (parts.size() != 3) {
+        cause += "Формат ввода: ДД.ММ.ГГГГ\n";
+        return false;
+    }
+
+    for (int i = 0; i < parts.size(); ++i) {
+        std::string current = parts[i];
+
+        if (!isNumeric(current)) {
+            char warning[100];
+            sprintf(warning, "%i часть (%s) не является цифрой\n", (i + 1), current.c_str());
+            cause += warning;
+            isValid = false;
+            continue;
+        }
+
+        int part = std::stoi(current);
+        auto range = ranges[i];
+
+        if (part < range[0] || part > range[1]) {
+            char warning[100];
+            sprintf(warning, "%i часть (%i) должна быть в диапазоне %i - %i\n", (i + 1), part, range[0], range[1]);
+            cause += warning;
+            isValid = false;
+        }
+    }
+
+    return isValid;
+}
+
+std::string getUserWord(std::string const &msg) {
+    return splitStringIntoList(getUserLineString((msg)), ' ')[0];
+}
+
+character addNewPerson() {
+    character person;
+    const char* proposes[] = {
+            "имя (буквы латиницей)",
+            "фамилию (буквы латиницей)",
+            "дата (в формате dd.mm.yyyy)",
+            "сумму (целое число)" };
+
+    for (int i = 0; i < sizeof(proposes) / sizeof(const char*); ++i) {
+        while (true) {
+            std::string warning;
+            std::string msg = "Введите ";
+            auto userInput = getUserWord(msg += proposes[i]);
+
+            if (i == 0 && isContainsOnlyLetters(userInput)) {
+                person.firstName = userInput;
+                break;
+            }
+            else if (i == 1 && isContainsOnlyLetters(userInput)) {
+                person.secondName = userInput;
+                break;
+            }
+            else if (i == 2 && isStringADate(userInput, warning)) {
+                person.payDay = userInput;
+                break;
+            }
+            else if (i == 3 && isNumeric(userInput)) {
+                person.salary = stoi(userInput);
+                break;
+            }
+
+            std::cout << (warning.length() ? warning : "Попробуйте снова") << std::endl;
+        }
+    }
+
+    return person;
+}
+
+// ---
 
 bool readIntoPersonFromBinaryFile(std::ifstream &fileReader, character &person) {
     bool isItemReadSuccessfully = false;
@@ -21,8 +160,17 @@ bool readIntoPersonFromBinaryFile(std::ifstream &fileReader, character &person) 
     fileReader.read((char*) &bufferSize, sizeof(int));
     // Если она существует в принципе, то продолжаем чтение
     if (!fileReader.eof()) {
-        person.name.resize(bufferSize);
-        fileReader.read((char*) person.name.c_str(), bufferSize);
+        person.firstName.resize(bufferSize);
+        fileReader.read((char*) person.firstName.c_str(), bufferSize);
+
+        fileReader.read((char*) &bufferSize, sizeof(int));
+        person.secondName.resize(bufferSize);
+        fileReader.read((char*) person.secondName.c_str(), bufferSize);
+
+        fileReader.read((char*) &bufferSize, sizeof(int));
+        person.payDay.resize(bufferSize);
+        fileReader.read((char*) person.payDay.c_str(), bufferSize);
+
         fileReader.read((char*) &person.salary, sizeof(int));
 
         isItemReadSuccessfully = true;
@@ -54,42 +202,50 @@ bool loadIntoArrFromBinaryFile(const char* path, vector<T> &arr) {
 void savePersonToBinaryFile(const char* path, character const &person, bool isAppMode = false) {
     std::ofstream file(path, std::ios::binary | (isAppMode ? std::ios::app : std::ios::out));
 
-    int nameSize = (int)person.name.length();
-    file.write((char*) &nameSize, sizeof(nameSize));
-    file.write(person.name.c_str(), nameSize);
+    int firstNameLineSize = (int)person.firstName.length();
+    file.write((char*) &firstNameLineSize, sizeof(firstNameLineSize));
+    file.write(person.firstName.c_str(), firstNameLineSize);
+
+    int secondNameLineSize = (int)person.secondName.length();
+    file.write((char*) &secondNameLineSize, sizeof(secondNameLineSize));
+    file.write(person.secondName.c_str(), secondNameLineSize);
+
+    int payDayLineSize = (int)person.payDay.length();
+    file.write((char*) &payDayLineSize, sizeof(payDayLineSize));
+    file.write(person.payDay.c_str(), payDayLineSize);
+
     file.write((char*) &person.salary, sizeof(person.salary));
 
     file.close();
 }
 
 int main() {
+    SetConsoleCP(65001);
+    SetConsoleOutputCP(65001);
+
     const char* path = R"(..\test.bin)";
-    character persons[10];
+
+    vector<character> persons;
     vector<character> results;
 
-    for (int i = 0; i < 10; ++i) {
-        persons[i].name = "person #" + std::to_string(i);
-        persons[i].salary = (rand() % 90) + 10;
-    }
+    persons.push_back(addNewPerson());
+    persons.push_back(addNewPerson());
 
     savePersonToBinaryFile(path, persons[0]);
     savePersonToBinaryFile(path, persons[1], true);
-    savePersonToBinaryFile(path, persons[2], true);
-    savePersonToBinaryFile(path, persons[3], true);
-    savePersonToBinaryFile(path, persons[4], true);
-    savePersonToBinaryFile(path, persons[5], true);
-    savePersonToBinaryFile(path, persons[6], true);
-    savePersonToBinaryFile(path, persons[7], true);
-    savePersonToBinaryFile(path, persons[8], true);
-    savePersonToBinaryFile(path, persons[9], true);
 
     auto isSuccess = loadIntoArrFromBinaryFile(path, results);
 
     if (isSuccess) {
-        for (auto const &result : results)
-            std::cout << result.name << ": " << result.salary << std::endl;
+        for (auto const &result : results) {
+            std::cout << result.firstName << std::endl;
+            std::cout << result.secondName << std::endl;
+            std::cout << result.payDay << std::endl;
+            std::cout << result.salary << std::endl;
+            std::cout << "-----------" << std::endl;
+        }
+
     } else {
         cout << "Error" << endl;
     }
-
 }
